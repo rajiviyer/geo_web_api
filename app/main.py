@@ -22,7 +22,9 @@ DATA_SELECT_OPTIONS = {
         'Use Seeded Data': 'seeded',
         'Upload New Data': 'upload'}
 
-DATAFILE_OPTIONS = {'Temperature': 'temperature_data.csv',}
+DATAFILE_OPTIONS = {'Temperature': 'temperature_data.csv',
+                    'Soil Sand Content': 'soil_sand_content.csv'
+                    }
 
 st.set_page_config(page_title="Geospatial Interpolation",
                    page_icon="🗺️",
@@ -143,6 +145,7 @@ def main():
         'Select an option:',
         list(DATA_SELECT_OPTIONS.keys())
     )
+    
     data_option = DATA_SELECT_OPTIONS[data_select]
     
     if data_option == "upload":
@@ -203,7 +206,10 @@ def main():
     action = st.sidebar.radio(":blue[**Select Action**]",
                                 ["Validate", "Generate"],
                                 horizontal=True,
-                                help="<b>Validate<b> will split original data into train and validation sets, train the interpolation model on validation sets & will evaluate R-square. It will also display an expandable Validation Plot of Actual & Predicted Values ")
+                                help="""
+                                * :orange[Validate] will split original data into train and validation sets, train the interpolation model on validation sets & will evaluate R-square. It will also display an expandable Validation Plot of Actual & Predicted Values. 
+                                * :orange[Generate] will generate random locations within the space of the original dataset (for seeded data) or allow locations file upload (for uploaded data). Values for the new locations will be interpolated and the results provided as a download link. Additionally expandable interpolation plot will be displayed.
+                                """)
 
     if action == "Generate":
         if data_option == "upload":
@@ -274,13 +280,9 @@ def main():
             # data_lon, data_lat = np_data[:,0], np_data[:,1]
                                     
             if action == "Generate":
-                st.write(f"Option: {data_option}")
-                # if locations_data is None:
-                #     st.sidebar.error("Location data not available")
                 if locations_data.shape[1] > 2:
                     st.sidebar.error("Please upload locations with only two columns")
                 else:
-                    # location_rows = locations_data.shape[0]
                     np_locations = np.array(locations_data)
                     z_pred = spatial_interpol(np_locations,np_data)
                     
@@ -341,14 +343,15 @@ def main():
                     plt.scatter(np_locations[:,0], 
                                 np_locations[:,1], 
                                 c=z_pred, 
-                                s=8, 
+                                s=8,
                                 cmap=cm.coolwarm,
                                 edgecolors='black',
                                 linewidth=0.3,
                                 alpha=0.8)                        
                     progress_bar.progress(90, progress_text) 
-                    col2.markdown("<p style='text-align: center;color:#d95a00'><b>Interpolation Plot</b></p>", unsafe_allow_html=True,
-                    help="Hover on Image to Find the View FullScreen Button")   
+                    col2.markdown("<p style='text-align:center;color:#d95a00'><b>Interpolation Plot</b></p>",
+                                  unsafe_allow_html = True
+                                  )   
                     col2.pyplot(fig)
                     progress_bar.empty()
             else:
@@ -358,7 +361,7 @@ def main():
                 np.random.seed(random_seed)
                 
                 # Split randomly into train and test arrays
-                train_size = 0.5
+                train_size = 0.8
                 train_data = data.sample(frac = train_size)
                 validation_data = data.drop(train_data.index)
                 
@@ -373,17 +376,18 @@ def main():
                 # Calculate R-Squared
                 r2 = calculate_r_squared(z_valid_actuals, z_val_predicted)
                 # st.write(f":orange[Computed Validation Metrics R-squared]: **{r2:.3f}**")
-                col2.markdown("<p style='text-align: center;color:#d95a00'><b>Validation Plot</b></p>", unsafe_allow_html=True)                      
+                col2.markdown("<p style='text-align: center;color:#d95a00'><b>Validation Plot</b></p>", unsafe_allow_html=True)
+                               
                 # Plotting configuration
                 sns.reset_defaults()
                 plt.rcParams["figure.dpi"] = 300
                 my_cmap = mpl.colormaps['hsv'] 
-                # my_norm = mpl.colors.Normalize()
-                # ec_colors = my_cmap(my_norm(np_tr[:,2]))
+                my_norm = mpl.colors.Normalize()
+                ec_colors = my_cmap(my_norm(np_tr[:,2]))
                                     
                 fig, ax = plt.subplots()
-                # sc2a = ax.scatter(np_tr[:, 0], np_tr[:, 1], c='white', s=7,
-                #                 edgecolors=ec_colors, linewidth=0.4, label="train")
+                sc2a = ax.scatter(np_tr[:, 0], np_tr[:, 1], c='white', s=7,
+                                edgecolors=ec_colors, linewidth=0.4, label="train")                
                 sc2b = ax.scatter(np_val[:, 0], np_val[:, 1], c=z_val_predicted, cmap=my_cmap, marker='+', s=5, linewidth=0.4,
                                 label="validation")
                 cbar1 = plt.colorbar(sc2b)
@@ -391,11 +395,7 @@ def main():
                 cbar1.ax.tick_params(length=2)
                 cbar1.ax.tick_params(labelsize=10)
                 plt.legend()
-                # plt.title("Validation Plot (Expandable)", 
-                #           color="#d95a00",
-                #           fontsize=14) 
-                
-                # val_col1, val_col2 = st.columns([0.40, 0.60])
+
                 col1.metric(label=":green[**Computed Validation Metrics R-squared**]📈", value=f"{r2:.3f}")
 
                 col2.pyplot(fig) 
