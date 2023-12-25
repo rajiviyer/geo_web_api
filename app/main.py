@@ -10,6 +10,7 @@ import matplotlib as mpl
 from io import BytesIO
 import base64
 from matplotlib import cm
+from matplotlib.colors import LinearSegmentedColormap
 # import requests
 
 # Define the FastAPI server URL
@@ -184,8 +185,7 @@ def main():
                                         help = "Select Column in Uploaded Data to be considered as Value"
                                         )
             
-            sel_cols = [x_coord, y_coord, value]
-        
+            sel_cols = [x_coord, y_coord, value]   
     else:
         seeded_filename_select = st.sidebar.selectbox(
             'Select Seeded Data:',
@@ -258,6 +258,46 @@ def main():
                 )
             
             st.sidebar.success("Locations Data Generated. Click on Run to Proceed..")
+    else:
+        train_split = st.sidebar.slider("Train Split %",
+                                        min_value=0,
+                                        max_value=100,
+                                        value=80
+                                        )
+    
+    advanced_options_expander = st.sidebar.expander(":blue[**Advanced Options**]",
+                                                    expanded=False)
+    
+    alpha = advanced_options_expander.number_input(
+        ":blue[**Alpha**]  :red[*]",
+        value=1.0,
+        help="Small alpha increases smoothing"
+        )
+
+    beta = advanced_options_expander.number_input(
+        ":blue[**Beta**]  :red[*]",
+        value=2.0,
+        help="Small beta increases smoothing"
+        )
+    
+    kappa = advanced_options_expander.number_input(
+        ":blue[**Kappa**]  :red[*]",
+        value=2.0,
+        help="High kappa makes method close to kriging"
+        )
+    
+    delta = advanced_options_expander.number_input(
+        ":blue[**Delta**]  :red[*]",
+        value=2.2 * (1.0e-8 + 1.2 * 2),
+        help="Used for ignoring obs too far away from sampled point"
+        )
+
+    if action == "Generate":
+        countour_levels = advanced_options_expander.number_input(
+        ":blue[**Coutour Levels**]  :red[*]",
+        value=16,
+        help="Countour Levels displayed in Interpolation Plot"
+        )    
 
     run_button = st.sidebar.button("Run")
     if run_button:
@@ -277,14 +317,19 @@ def main():
                 
             # Convert data into numpy array
             np_data = np.array(data)
-            # data_lon, data_lat = np_data[:,0], np_data[:,1]
                                     
             if action == "Generate":
                 if locations_data.shape[1] > 2:
                     st.sidebar.error("Please upload locations with only two columns")
                 else:
                     np_locations = np.array(locations_data)
-                    z_pred = spatial_interpol(np_locations,np_data)
+                    z_pred = spatial_interpol(np_locations,
+                                              np_data,
+                                              alpha = alpha,
+                                              beta = beta,
+                                              kappa = kappa,
+                                              delta = delta
+                                              )
                     
                     interpolated_df = locations_data.copy()
                     interpolated_df['value'] = pd.Series(z_pred)
@@ -321,7 +366,13 @@ def main():
                             gmap[h, k] = idx
                             idx += 1
                     progress_bar.progress(25, progress_text)     
-                    z = spatial_interpol(np.stack((xg, yg),axis=1), np_data)
+                    z = spatial_interpol(np.stack((xg, yg),axis=1), 
+                                         np_data,
+                                         alpha = alpha,
+                                         beta = beta,
+                                         kappa = kappa,
+                                         delta = delta   
+                                         )
 
                     for h in range(len(grid_x)):
                         for k in range(len(grid_y)):
@@ -329,17 +380,21 @@ def main():
                             zgrid[h, k] = z[idx]
                             
                     zgridt = zgrid.transpose()
-                    progress_bar.progress(50, progress_text)
-                    
+                    progress_bar.progress(50, progress_text)              
+
                     # contour plot
                     (fig, ax) = set_plt_params() 
                     cs = plt.contourf(xc, yc, 
-                                        zgridt,
-                                        cmap='coolwarm',
-                                        levels=16) 
+                                      zgridt,
+                                      cmap='coolwarm',
+                                      levels=countour_levels)
+                    
+                    cs.cmap.set_under('white')
+                    cs.set_clim(vmin=1)
                     cbar = plt.colorbar(cs)
                     cbar.ax.tick_params(width=0.1) 
-                    cbar.ax.tick_params(length=2) 
+                    cbar.ax.tick_params(length=2)
+                    
                     plt.scatter(np_locations[:,0], 
                                 np_locations[:,1], 
                                 c=z_pred, 
@@ -361,7 +416,7 @@ def main():
                 np.random.seed(random_seed)
                 
                 # Split randomly into train and test arrays
-                train_size = 0.8
+                train_size = train_split / 100
                 train_data = data.sample(frac = train_size)
                 validation_data = data.drop(train_data.index)
                 
@@ -371,25 +426,34 @@ def main():
                 z_valid_actuals = np_val[:,2]
                 
                 # Predict on Validation Data
-                z_val_predicted = spatial_interpol(np_val,np_tr)
+                z_val_predicted = spatial_interpol(np_val,
+                                                   np_tr,
+                                                   alpha = alpha,
+                                                   beta = beta,
+                                                   kappa = kappa,
+                                                   delta = delta                  
+                                                   )
                 
                 # Calculate R-Squared
                 r2 = calculate_r_squared(z_valid_actuals, z_val_predicted)
-                # st.write(f":orange[Computed Validation Metrics R-squared]: **{r2:.3f}**")
+
                 col2.markdown("<p style='text-align: center;color:#d95a00'><b>Validation Plot</b></p>", unsafe_allow_html=True)
                                
                 # Plotting configuration
                 sns.reset_defaults()
                 plt.rcParams["figure.dpi"] = 300
-                my_cmap = mpl.colormaps['hsv'] 
+                my_cmap = cm.coolwarm #mpl.colormaps['hsv'] 
                 my_norm = mpl.colors.Normalize()
-                ec_colors = my_cmap(my_norm(np_tr[:,2]))
+               # ec_colors = my_cmap(my_norm(np_tr[:,2]))
                                     
                 fig, ax = plt.subplots()
-                sc2a = ax.scatter(np_tr[:, 0], np_tr[:, 1], c='white', s=7,
-                                edgecolors=ec_colors, linewidth=0.4, label="train")                
-                sc2b = ax.scatter(np_val[:, 0], np_val[:, 1], c=z_val_predicted, cmap=my_cmap, marker='+', s=5, linewidth=0.4,
-                                label="validation")
+                sc2a = ax.scatter(np_tr[:, 0], np_tr[:, 1], c=np_tr[:, 2], 
+                                  s=7, edgecolors='black', cmap=my_cmap,
+                                  linewidth=0.4, label="train")                
+                sc2b = ax.scatter(np_val[:, 0], np_val[:, 1], 
+                                  c=z_val_predicted, cmap=my_cmap, marker='+', 
+                                  s=5, linewidth=0.4,
+                                  label="validation")
                 cbar1 = plt.colorbar(sc2b)
                 cbar1.ax.tick_params(width=0.1)
                 cbar1.ax.tick_params(length=2)
@@ -411,10 +475,3 @@ def main():
 
         # Send file to the FastAPI backend for analysis
         # response = requests.post(f'{API_URL}/analyze', files={'file': uploaded_file})
-        
-        # if response.status_code == 200:
-        #     result = response.json()
-        #     st.write('Analysis Results:')
-        #     st.write(result)
-        # else:
-        #     st.write('Analysis failed. Please try again.')
