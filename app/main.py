@@ -389,8 +389,8 @@ def main():
                                       cmap='coolwarm',
                                       levels=countour_levels)
                     
-                    cs.cmap.set_under('white')
-                    cs.set_clim(vmin=1)
+                    # cs.cmap.set_under('white')
+                    # cs.set_clim(vmin=1)
                     cbar = plt.colorbar(cs)
                     cbar.ax.tick_params(width=0.1) 
                     cbar.ax.tick_params(length=2)
