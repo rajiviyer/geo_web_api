@@ -7,23 +7,3 @@ services:
       context: ./app
     ports:
       - "8501:8501"
-    networks:
-      - geo_network
-  nginx:
-    container_name: geo_nginx_server
-    build:
-      context: ./nginx
-    ports:
-      - "8443:443"
-    volumes:
-      - ./nginx/conf/nginx.conf:/etc/nginx/conf.d/nginx.conf
-      - ./nginx/certs:/etc/nginx/certs
-    depends_on:
-      - streamlit
-    networks:
-      - geo_network
-
-networks:
-  geo_network:
-    driver: bridge
-
